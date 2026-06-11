@@ -1,0 +1,10 @@
+# Local secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated outputs
+output/

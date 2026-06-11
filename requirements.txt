@@ -1,0 +1,11 @@
+# requirements.txt
+# 项目的Python依赖包列表
+
+pandas
+requests
+python-dotenv
+beautifulsoup4
+lxml
+markdownify
+selenium # 新增Selenium用于动态内容抓取
+webdriver-manager # 自动管理WebDriver 

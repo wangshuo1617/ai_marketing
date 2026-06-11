@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI咨询内容工作台</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>AI咨询内容工作台</h1>
+      <p>采集AI消息，沉淀实践感悟，生成老板愿意看的商业分析内容。</p>
+    </div>
+    <div class="actions">
+      <button id="refreshBtn" class="secondary">刷新</button>
+      <button id="collectBtn">采集AI消息</button>
+      <button id="generateBtn" class="primary">生成内容</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel news-panel">
+      <div class="panel-header">
+        <div>
+          <h2>AI消息候选</h2>
+          <span id="candidateCount" class="meta">0 条</span>
+        </div>
+        <button id="promoteBtn" class="secondary">加入灵感池</button>
+      </div>
+      <div id="candidateList" class="list"></div>
+      <div class="pagination">
+        <button id="candidatePrevBtn" class="secondary">上一页</button>
+        <span id="candidatePageInfo">第 1 / 1 页</span>
+        <button id="candidateNextBtn" class="secondary">下一页</button>
+      </div>
+    </section>
+
+    <section class="panel input-panel">
+      <div class="panel-header">
+        <div>
+          <h2>我的实践感悟</h2>
+          <span class="meta">项目复盘、客户观察、反常识发现</span>
+        </div>
+      </div>
+      <form id="inspirationForm" class="form">
+        <label>标题
+          <input name="title" placeholder="例如：老板真正关心的不是模型能力，而是业务响应速度" />
+        </label>
+        <label>内容
+          <textarea name="content" rows="8" placeholder="写下你看到的现象、客户场景、项目踩坑、你的判断和可执行建议。"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>类型
+            <select name="type">
+              <option value="practice_insight">实践感悟</option>
+              <option value="client_case">客户项目复盘</option>
+              <option value="idea_note">选题想法</option>
+              <option value="ai_news">AI消息</option>
+            </select>
+          </label>
+          <label>标签
+            <input name="tags" placeholder="销售;流程;AI咨询" />
+          </label>
+        </div>
+        <label>链接
+          <input name="url" placeholder="可选" />
+        </label>
+        <button type="submit" class="primary wide">保存到灵感池</button>
+      </form>
+    </section>
+
+    <section class="panel inspiration-panel">
+      <div class="panel-header">
+        <div>
+          <h2>灵感池</h2>
+          <span id="inspirationCount" class="meta">0 条</span>
+        </div>
+        <div class="mini-actions">
+          <button id="selectAllInspBtn" class="secondary">全选</button>
+          <button id="generateFactsBtn" class="primary">生成事实</button>
+        </div>
+      </div>
+      <div id="inspirationList" class="list"></div>
+    </section>
+  </main>
+
+  <section class="pipeline-board">
+    <div class="stage-panel">
+      <div class="panel-header">
+        <div>
+          <h2>事实池</h2>
+          <span class="meta">从灵感中提炼可讨论事实，可编辑</span>
+        </div>
+        <button id="generateOutlinesBtn" class="primary">生成大纲</button>
+      </div>
+      <div id="factList" class="stage-list"></div>
+    </div>
+
+    <div class="stage-panel">
+      <div class="panel-header">
+        <div>
+          <h2>大纲池</h2>
+          <span class="meta">商业视角选题大纲，可编辑</span>
+        </div>
+        <button id="generateDraftsBtn" class="primary">生成初稿</button>
+      </div>
+      <div id="outlineList" class="stage-list"></div>
+    </div>
+
+    <div class="stage-panel">
+      <div class="panel-header">
+        <div>
+          <h2>初稿池</h2>
+          <span class="meta">公众号/视频号/抖音初稿，可编辑</span>
+        </div>
+        <button id="reviewDraftsBtn" class="primary">质检输出</button>
+      </div>
+      <div id="draftList" class="stage-list"></div>
+    </div>
+
+    <div class="stage-panel">
+      <div class="panel-header">
+        <div>
+          <h2>生成结果</h2>
+          <span class="meta">本次通过质检的稿件</span>
+        </div>
+      </div>
+      <div id="approvedFiles" class="stage-list"></div>
+    </div>
+  </section>
+
+  <section class="bottom-panel">
+    <div id="statusBox" class="status">准备就绪</div>
+  </section>
+
+  <!-- 模态框用于查看生成结果 -->
+  <div id="viewModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">查看内容</h2>
+        <button id="closeModalBtn" class="secondary" style="height:28px; padding:0 8px;">关闭</button>
+      </div>
+      <div class="modal-body">
+        <pre id="modalBodyText" style="white-space: pre-wrap; font-family: inherit; margin: 0;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

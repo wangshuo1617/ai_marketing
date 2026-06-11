@@ -1,0 +1,10 @@
+﻿title,content,url,source,type,tags,created_at
+ai落地的最主要的四条经验,"1. 一定要用最新、最强的模型，在错误的模型上浪费时间是最常见的错误。（训练、微调？效果很不明显）
+2. 一定要学好提示词，所有ai技巧，从agent到mcp到skill，本质都是提示词。学不好提示词会极大放大成本。
+3. 一定要让业务人员负责ai落地，技术人员负责的ai落地永远无法可用，因为他们不懂业务
+4. 一定要想好让ai做什么，然后对它保持信心。",,个人输入,practice_insight,经验,2026-06-10
+ai时代好的人更值钱的了,ai时代好的人更值钱的了。只有锄头时，每个人都差不多，体力最好和最差的之间也就是几倍的差距；播种机来了，只有少数人能用好。ai会让高级人员更值钱。初级人员完成任务，中级人员完成工作，高级人员完成目标,,个人输入,practice_insight,,2026-06-10
+token成本不能忽略,token与电力是一样的，现在看起来便宜，后面会成为重要的成本项。未来公司的竞争力可能会有一项是能多有效的使用token,,个人输入,practice_insight,,2026-06-10
+Have we reached the point where open-source LLMs are “just good enough”?,,https://www.reddit.com/r/LocalLLaMA/comments/1u0yo32/have_we_reached_the_point_where_opensource_llms/,Reddit LocalLLaMA Latest,ai_news,LLM,2026-06-09
+Open image generation models are closer to closed-source quality than this sub thinks [D],,https://www.reddit.com/r/MachineLearning/comments/1u0119r/open_image_generation_models_are_closer_to/,Reddit MachineLearning Latest,ai_news,,2026-06-09
+AI落地取得成功的关键在于合适的架构,好的ai架构能完美的与原有业务融合，且事半功倍；不好的ai架构会阻碍原有业务，导致事倍功半，甚至损害原有业务。,,个人输入,practice_insight,,2026-06-10
