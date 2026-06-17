@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 
 import config
 from utils import file_saver
+from utils.db_manager import DBManager
 
 
 NEWS_COLUMNS = ["title", "content", "url", "source", "type", "tags", "published_at", "created_at", "relevance_score", "status"]
@@ -235,4 +236,5 @@ def collect_ai_news_candidates(sources: list[dict[str, str]] | None = None) -> p
     candidates.drop(columns=["_sort_time"], inplace=True)
     candidates.reset_index(drop=True, inplace=True)
     file_saver.save_dataframe(candidates, config.AI_NEWS_CANDIDATES_PATH)
+    DBManager().replace_ai_news_candidates(candidates)
     return candidates

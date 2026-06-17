@@ -26,13 +26,18 @@
           <h2>AI消息候选</h2>
           <span id="candidateCount" class="meta">0 条</span>
         </div>
-        <button id="promoteBtn" class="secondary">加入灵感池</button>
+        <div style="display:flex; gap:8px;">
+          <button id="toggleCandidatesBtn" class="secondary">收起</button>
+          <button id="promoteBtn" class="secondary">加入灵感池</button>
+        </div>
       </div>
-      <div id="candidateList" class="list"></div>
-      <div class="pagination">
-        <button id="candidatePrevBtn" class="secondary">上一页</button>
-        <span id="candidatePageInfo">第 1 / 1 页</span>
-        <button id="candidateNextBtn" class="secondary">下一页</button>
+      <div id="candidateContainer">
+        <div id="candidateList" class="list"></div>
+        <div class="pagination">
+          <button id="candidatePrevBtn" class="secondary">上一页</button>
+          <span id="candidatePageInfo">第 1 / 1 页</span>
+          <button id="candidateNextBtn" class="secondary">下一页</button>
+        </div>
       </div>
     </section>
 
@@ -77,11 +82,14 @@
           <span id="inspirationCount" class="meta">0 条</span>
         </div>
         <div class="mini-actions">
+          <button id="toggleInspirationsBtn" class="secondary">收起</button>
           <button id="selectAllInspBtn" class="secondary">全选</button>
           <button id="generateFactsBtn" class="primary">生成事实</button>
         </div>
       </div>
-      <div id="inspirationList" class="list"></div>
+      <div id="inspirationContainer">
+        <div id="inspirationList" class="list"></div>
+      </div>
     </section>
   </main>
 
@@ -92,7 +100,10 @@
           <h2>事实池</h2>
           <span class="meta">从灵感中提炼可讨论事实，可编辑</span>
         </div>
-        <button id="generateOutlinesBtn" class="primary">生成大纲</button>
+        <div style="display:flex; gap:8px;">
+          <button id="toggleFactsBtn" class="secondary">收起</button>
+          <button id="generateOutlinesBtn" class="primary">生成大纲</button>
+        </div>
       </div>
       <div id="factList" class="stage-list"></div>
     </div>
@@ -103,7 +114,10 @@
           <h2>大纲池</h2>
           <span class="meta">商业视角选题大纲，可编辑</span>
         </div>
-        <button id="generateDraftsBtn" class="primary">生成初稿</button>
+        <div style="display:flex; gap:8px;">
+          <button id="toggleOutlinesBtn" class="secondary">收起</button>
+          <button id="generateDraftsBtn" class="primary">生成初稿</button>
+        </div>
       </div>
       <div id="outlineList" class="stage-list"></div>
     </div>
@@ -114,7 +128,10 @@
           <h2>初稿池</h2>
           <span class="meta">公众号/视频号/抖音初稿，可编辑</span>
         </div>
-        <button id="reviewDraftsBtn" class="primary">质检输出</button>
+        <div style="display:flex; gap:8px;">
+          <button id="toggleDraftsBtn" class="secondary">收起</button>
+          <button id="reviewDraftsBtn" class="primary">质检输出</button>
+        </div>
       </div>
       <div id="draftList" class="stage-list"></div>
     </div>
@@ -143,6 +160,22 @@
       </div>
       <div class="modal-body">
         <pre id="modalBodyText" style="white-space: pre-wrap; font-family: inherit; margin: 0;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态框用于编辑内容 -->
+  <div id="editModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="editModalTitle">编辑内容</h2>
+        <div style="display:flex; gap:8px;">
+          <button id="saveEditBtn" class="primary" style="height:28px; padding:0 8px;">保存</button>
+          <button id="closeEditModalBtn" class="secondary" style="height:28px; padding:0 8px;">取消</button>
+        </div>
+      </div>
+      <div class="modal-body" id="editModalBody">
+        <!-- 动态生成编辑表单 -->
       </div>
     </div>
   </div>

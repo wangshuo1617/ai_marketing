@@ -7,7 +7,7 @@ import mimetypes
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from web import workspace_service
 
@@ -22,10 +22,24 @@ class WorkspaceHandler(BaseHTTPRequestHandler):
             self._serve_file(STATIC_DIR / "index.html")
             return
         if parsed.path.startswith("/static/"):
-            self._serve_file(STATIC_DIR / parsed.path.removeprefix("/static/"))
+            static_path = unquote(parsed.path.removeprefix("/static/"))
+            self._serve_file(STATIC_DIR / static_path)
             return
         if parsed.path == "/api/dashboard":
             self._send_json(workspace_service.get_dashboard_data())
+            return
+        if parsed.path == "/api/get-draft":
+            from urllib.parse import parse_qs
+            query_components = parse_qs(parsed.query)
+            draft_id = query_components.get("id", [None])[0]
+            source = query_components.get("source", [""])[0]
+            if draft_id:
+                self._send_json(workspace_service.get_draft(int(draft_id), include_complete=source != "raw"))
+            else:
+                self._send_json({"error": "Missing draft ID"}, status=400)
+            return
+        if parsed.path == "/typeset":
+            self._serve_file(STATIC_DIR / "article-tools" / "md-to-wechat.html")
             return
         self._send_json({"error": "Not found"}, status=404)
 
@@ -39,12 +53,49 @@ class WorkspaceHandler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 self._send_json(workspace_service.update_candidate_status(int(payload["index"]), str(payload["status"])))
                 return
+            if parsed.path == "/api/summarize-candidate":
+                payload = self._read_json()
+                self._send_json(workspace_service.summarize_candidate(int(payload["index"])))
+                return
             if parsed.path == "/api/add-inspiration":
                 self._send_json(workspace_service.add_inspiration(self._read_json()))
                 return
             if parsed.path == "/api/delete-inspiration":
                 payload = self._read_json()
                 self._send_json(workspace_service.delete_inspiration(int(payload["index"])))
+                return
+            if parsed.path == "/api/delete-fact":
+                payload = self._read_json()
+                self._send_json(workspace_service.delete_fact(int(payload["id"])))
+                return
+            if parsed.path == "/api/delete-outline":
+                payload = self._read_json()
+                self._send_json(workspace_service.delete_outline(int(payload["id"])))
+                return
+            if parsed.path == "/api/delete-draft":
+                payload = self._read_json()
+                self._send_json(workspace_service.delete_draft(int(payload["id"])))
+                return
+            if parsed.path == "/api/update-inspiration":
+                self._send_json(workspace_service.update_inspiration(self._read_json()))
+                return
+            if parsed.path == "/api/update-fact":
+                self._send_json(workspace_service.update_fact(self._read_json()))
+                return
+            if parsed.path == "/api/update-outline":
+                self._send_json(workspace_service.update_outline(self._read_json()))
+                return
+            if parsed.path == "/api/update-draft":
+                self._send_json(workspace_service.update_draft(self._read_json()))
+                return
+            if parsed.path == "/api/rewrite-draft":
+                self._send_json(workspace_service.rewrite_draft(self._read_json()))
+                return
+            if parsed.path == "/api/approve-draft":
+                self._send_json(workspace_service.approve_draft(self._read_json()))
+                return
+            if parsed.path == "/api/generate-article-images":
+                self._send_json(workspace_service.generate_article_images(self._read_json()))
                 return
             if parsed.path == "/api/promote-selected":
                 self._send_json(workspace_service.promote_selected_candidates())

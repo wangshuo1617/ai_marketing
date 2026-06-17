@@ -28,6 +28,17 @@ IP_PIPELINE_USE_LLM = _env_bool("IP_PIPELINE_USE_LLM", True)
 IP_PIPELINE_MAX_FACTS = 5
 IP_GATEKEEPER_MIN_SCORE = 8.0
 
+# --- 文章智能配图配置 ---
+IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL", "gpt-image-2-client")
+IMAGE_GEN_API_KEY = os.getenv("IMAGE_GEN_API_KEY", "")
+IMAGE_GEN_BASE_URL = os.getenv("IMAGE_GEN_BASE_URL") or os.getenv("AI_BASE_URL", "https://api.147ai.cn")
+IMAGE_GEN_OUTPUT_DIR = os.path.join("web", "static", "generated_images")
+IMAGE_GEN_MAX_IMAGES = int(os.getenv("IMAGE_GEN_MAX_IMAGES", "4"))
+IMAGE_GEN_QUALITY = os.getenv("IMAGE_GEN_QUALITY", "medium")
+IMAGE_GEN_MODERATION = os.getenv("IMAGE_GEN_MODERATION", "low")
+IMAGE_GEN_OUTPUT_FORMAT = os.getenv("IMAGE_GEN_OUTPUT_FORMAT", "png")
+IMAGE_GEN_DEFAULT_SIZE = os.getenv("IMAGE_GEN_DEFAULT_SIZE", "1536x1024")
+
 IP_CONTENT_PLATFORMS = ["wechat_article", "wechat_channels", "douyin"]
 IP_PLATFORM_SPECS = {
     "wechat_article": {

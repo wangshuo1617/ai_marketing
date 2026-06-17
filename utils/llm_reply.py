@@ -1,5 +1,6 @@
 import requests
 import os
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,14 +17,16 @@ def llm_reply(
     prompt: str,
     system_prompt: str | None = None,
     temperature: float | None = None,
+    timeout: int | None = None,
+    model: str | None = None,
 ) -> str:
     api_key = os.getenv("AI_API_KEY") or os.getenv("147API_KEY")
     if not api_key:
         raise ValueError("AI_API_KEY is not set. Please configure it in your .env file.")
 
     base_url = os.getenv("AI_BASE_URL", "https://api.147ai.cn").rstrip("/")
-    model = os.getenv("AI_MODEL", "gemini-2.5-pro-thinking-8192")
-    timeout = int(os.getenv("AI_REQUEST_TIMEOUT", "120"))
+    model = model or os.getenv("AI_MODEL", "gemini-2.5-pro-thinking-8192")
+    timeout = timeout or int(os.getenv("AI_REQUEST_TIMEOUT", "120"))
     if temperature is None:
         temperature = _float_env("AI_TEMPERATURE", 0.4)
 

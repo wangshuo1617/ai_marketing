@@ -4,13 +4,29 @@
 import pandas as pd
 import os
 import argparse
+import logging
 from datetime import datetime
+from pathlib import Path
 
 import config
 from agents.ip_content_pipeline import IPContentPipeline
 from agents.inspiration_pipeline import append_selected_news_to_inspirations, build_inspiration_pool
 from collectors.ai_news_collector import collect_ai_news_candidates
 from web_app import run as run_web_app
+
+
+def setup_logging() -> None:
+    log_dir = Path(__file__).resolve().parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "app.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        handlers=[
+            logging.FileHandler(log_file, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
 
 
 def is_empty_source_data(source_data):
@@ -85,6 +101,7 @@ def promote_selected_news():
 
 
 if __name__ == "__main__":
+    setup_logging()
     # 确保输出目录存在
     os.makedirs(os.path.join('output', 'generated_content'), exist_ok=True)
     os.makedirs(config.IP_CONTENT_OUTPUT_DIR, exist_ok=True)

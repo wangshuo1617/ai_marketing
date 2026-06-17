@@ -14,8 +14,12 @@ import pandas as pd
 
 import config
 from utils import file_saver
+from utils.db_manager import DBManager
 from utils.llm_reply import llm_reply
 from utils.prompt_loader import load_prompt
+import logging
+
+logger = logging.getLogger("pipeline")
 
 
 LLMCallable = Callable[..., str]
@@ -155,7 +159,7 @@ def _json_from_llm(
             response = match.group(1).strip()
         return json.loads(response)
     except Exception as exc:
-        print(f"    - LLM JSON解析失败，使用规则兜底: {exc}")
+        logger.warning("LLM JSON解析失败，使用规则兜底: %s", exc)
         return fallback
 
 
@@ -366,16 +370,93 @@ class ScenarioEngineer:
     def __init__(self, platforms: list[str] | None = None, llm: LLMCallable | None = None):
         self.platforms = platforms or config.IP_CONTENT_PLATFORMS
         self.llm = llm
+        self.search_tool = SearchTool()
+        self.research_reports: list[dict[str, Any]] = []
 
     def run(self, outlines: list[TopicOutline]) -> list[PlatformDraft]:
         drafts = []
+        self.research_reports = []
         for outline in outlines:
+            # 1. Research: Find supporting cases for the outline's key points
+            research = self._research_supporting_cases(outline)
+            research_context = research["context"]
+            self.research_reports.append({
+                "topic_id": outline.topic_id,
+                "query": research["query"],
+                "result_count": research["result_count"],
+                "usable_count": research["usable_count"],
+                "sources": research["sources"],
+            })
+            
             for platform in self.platforms:
-                draft = self._try_llm_generate(outline, platform) or self._fallback_generate(outline, platform)
+                draft = self._try_llm_generate(outline, platform, research_context) or self._fallback_generate(outline, platform)
                 drafts.append(draft)
         return drafts
 
-    def _try_llm_generate(self, outline: TopicOutline, platform: str) -> PlatformDraft | None:
+    def _research_supporting_cases(self, outline: TopicOutline) -> dict[str, Any]:
+        """Multi-query heuristic research: generates 3 targeted queries, merges results, retries if thin."""
+        llm = self.llm or llm_reply
+        query_gen_prompt = (
+            f"基于以下商业选题大纲，生成3个不同维度的中文搜索词，分别用于寻找：\n"
+            f"1. Shock维度：真实的业务吃瘪案例或反常识数据（企业/行业/成本类事故）\n"
+            f"2. Solution维度：改造后的量化效果数据（产能/时间/成本/容错率对比）\n"
+            f"3. 背景维度：支撑该行业趋势的最新新闻或研究报告\n\n"
+            f"大纲标题：{outline.title_hook}\n"
+            f"核心论点：{outline.technical_breakdown}\n\n"
+            f"只输出JSON数组，3个字符串，例如：[\"query1\", \"query2\", \"query3\"]"
+        )
+
+        try:
+            raw = _call_llm(query_gen_prompt, llm, 0.2).strip()
+            queries: list[str] = json.loads(re.search(r"\[.*\]", raw, re.S).group())
+        except Exception:
+            queries = [f"{outline.title_hook} 企业案例", f"{outline.technical_breakdown} 效果数据"]
+
+        all_parts: list[str] = []
+        all_sources: list[dict] = []
+        total_results = 0
+
+        for q in queries[:3]:
+            q = q.strip().strip('"').strip("'")
+            if not q:
+                continue
+            try:
+                logger.info("[Research] Searching: %s", q)
+                res = self.search_tool.get_context(q, max_results=3)
+                total_results += res["result_count"]
+                # get_context returns a formatted "context" string; re-extract parts
+                for src in res["sources"]:
+                    if src not in all_sources:
+                        all_sources.append(src)
+                all_parts.append(f"=== Query: {q} ===\n{res['context']}")
+                logger.info("[Research] Got %d snippets", res['usable_count'])
+            except SearchToolError as exc:
+                logger.warning("[Research] Skipped (%s)", exc)
+
+        # Fallback: if total usable snippets are thin, retry with a broader query
+        if len(all_sources) < 2:
+            fallback_query = f"{outline.content_angle} AI 企业案例 成本效益"
+            logger.info("[Research] Fallback search: %s", fallback_query)
+            try:
+                res = self.search_tool.get_context(fallback_query, max_results=5)
+                total_results += res["result_count"]
+                all_sources.extend(s for s in res["sources"] if s not in all_sources)
+                all_parts.append(f"=== Fallback ===\n{res['context']}")
+            except SearchToolError as exc:
+                logger.warning("[Research] Fallback also failed (%s)", exc)
+
+        if not all_parts:
+            raise SearchToolError("所有搜索维度均未返回可用素材")
+
+        return {
+            "query": " | ".join(queries[:3]),
+            "result_count": total_results,
+            "usable_count": len(all_sources),
+            "sources": all_sources,
+            "context": "\n\n".join(all_parts),
+        }
+
+    def _try_llm_generate(self, outline: TopicOutline, platform: str, research_context: str) -> PlatformDraft | None:
         if self.llm is None and not config.IP_PIPELINE_USE_LLM:
             return None
 
@@ -385,6 +466,7 @@ class ScenarioEngineer:
             platform=platform,
             platform_specs_json=json.dumps(specs, ensure_ascii=False),
             outline_json=json.dumps(asdict(outline), ensure_ascii=False),
+            research_context=research_context, # Pass the research results to the prompt
         )
         data = _json_from_llm(prompt, {}, self.llm, _temperature_for_node(platform))
         if not data or not data.get("body"):
@@ -403,13 +485,13 @@ class ScenarioEngineer:
             body = self._wechat_article(outline)
             title = outline.title_hook
         elif platform == "wechat_channels":
-            body = self._short_video(outline, opening="很多老板对AI的判断，卡在一个误区里。")
+            body = self._short_video(outline, opening="[画面] 主讲人半身出镜，背景是相关新闻截图。\n[口播] 很多老板对AI的判断，卡在一个误区里。")
             title = f"视频号口播_{outline.content_angle}"
         elif platform == "douyin":
-            body = self._short_video(outline, opening="先说结论：这件事会影响你的AI预算。")
+            body = self._short_video(outline, opening="[画面] 切近景加粗字幕。\n[口播] 先说结论：这件事会影响你的AI预算。")
             title = f"抖音口播_{outline.content_angle}"
         else:
-            body = self._short_video(outline, opening="这是一条AI商业判断。")
+            body = self._short_video(outline, opening="[画面] 主讲人出镜。\n[口播] 这是一条AI商业判断。")
             title = outline.title_hook
         return PlatformDraft(
             topic_id=outline.topic_id,
@@ -422,27 +504,27 @@ class ScenarioEngineer:
     def _wechat_article(self, outline: TopicOutline) -> str:
         return f"""# {outline.title_hook}
 
-很多企业现在谈AI，问题不是认知不够热，而是预算和流程还停留在上一轮。
+我最近和几个客户聊AI落地，发现大家的问题不是认知不够热，而是预算和流程还停留在上一轮。
 
 ## 真正的变化是什么
 {outline.anxiety_background}
 
-## 为什么这件事值得老板关注
+## 为什么这件事值得你关注
 {outline.technical_breakdown}
 
 这里的关键不是追热点，而是重新计算三件事：第一，哪些流程的边际成本已经被AI打穿；第二，哪些岗位任务可以被拆成标准化节点；第三，哪些投入还在用过时的采购逻辑续费。
 
 ## 一个更现实的判断框架
-不要先问“我们要不要上大模型”，而要先问“哪一段业务动作已经贵得不合理”。如果一个团队每天都在重复查资料、写摘要、整理客户问题、生成跟进话术，这些环节本质上都是信息处理成本。AI真正改变的，就是这类成本的价格和速度。
+我经常跟老板们说，不要先问“我们要不要上大模型”，而要先问“哪一段业务动作已经贵得不合理”。如果你的团队每天都在重复查资料、写摘要、整理客户问题、生成跟进话术，这些环节本质上都是信息处理成本。AI真正改变的，就是这类成本的价格和速度。
 
-对老板来说，最值得关注的不是模型榜单，而是组织里那些长期没人愿意拆的小流程。它们单独看都不大，但叠在一起，就是人效、响应速度和管理颗粒度的差距。
+对你来说，最值得关注的不是模型榜单，而是组织里那些长期没人愿意拆的小流程。它们单独看都不大，但叠在一起，就是人效、响应速度和管理颗粒度的差距。
 
-## 企业应该怎么做
+## 我的建议
 {outline.practical_solution}
 
 建议先不要从“大模型战略”这种大词开始，而是从一个可验证的业务闭环开始：线索响应、客户答疑、销售跟进、内容生产、知识库检索。每个场景只看三个指标：节省多少人时、提升多少转化、降低多少试错成本。
 
-更具体一点，可以按四步走：
+更具体一点，你可以按四步走：
 
 1. 先列出团队每周重复超过三次的文本、检索、整理、判断任务。
 2. 再给每个任务标注风险等级，低风险任务先自动化，高风险任务保留人工复核。
@@ -460,17 +542,23 @@ AI带来的不是一个工具红利，而是一轮流程成本重估。谁先把
     def _short_video(self, outline: TopicOutline, opening: str) -> str:
         return f"""{opening}
 
-{outline.title_hook}
+[画面] 配合紧凑的背景音乐，展示相关数据图表。
+[口播] {outline.title_hook}
 
-为什么？{outline.anxiety_background}
+[画面] 主讲人严肃表情。
+[口播] 为什么？{outline.anxiety_background}
 
-你不用先关心模型参数，先关心业务账：哪些动作重复、哪些判断依赖经验、哪些内容每天都要人肉生产。
+[画面] 切换到流程图或白板演示。
+[口播] 你不用先关心模型参数，先关心业务账：哪些动作重复、哪些判断依赖经验、哪些内容每天都要人肉生产。
 
-我的建议是：{outline.practical_solution}
+[画面] 主讲人重新出镜，语气诚恳。
+[口播] 我的建议是：{outline.practical_solution}
 
-AI项目别先做大，先做窄。窄到一个流程、一个指标、一个星期能复盘。
+[画面] 放大主讲人面部。
+[口播] AI项目别先做大，先做窄。窄到一个流程、一个指标、一个星期能复盘。
 
-想要自查，可以去领《企业AI流程改造自查表》，先把自己的业务流程拆出来。""".strip()
+[画面] 屏幕下方弹出资料领取提示。
+[口播] 想要自查，可以去领《企业AI流程改造自查表》，先把自己的业务流程拆出来。""".strip()
 
 
 class ConsistencyGatekeeper:
@@ -545,69 +633,103 @@ class ConsistencyGatekeeper:
 
 
 class IPContentPipeline:
-    """Orchestrates the Scout -> Translator -> Engineer -> Gatekeeper state machine."""
+    """Orchestrates the flow from Inspiration -> Fact -> Outline -> Draft -> Review."""
 
     def __init__(self, llm: LLMCallable | None = None):
+        self.db = DBManager()
         self.scout = TrendScout(llm=llm)
         self.translator = BusinessInsightTranslator(llm=llm)
         self.engineer = ScenarioEngineer(llm=llm)
         self.gatekeeper = ConsistencyGatekeeper(llm=llm)
 
-    def run(self, source_items: list[dict[str, Any]] | pd.DataFrame) -> PipelineRunResult:
-        print("\n[IP流水线 1/4] Trend Scout 提取底层事实...")
-        facts = self.scout.run(source_items)
-        print(f"  - 生成 {len(facts)} 个底层事实")
+    def run(self, inspiration_pool: pd.DataFrame) -> PipelineRunResult:
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        logger.info("[Pipeline] Starting run %s...", run_id)
 
-        print("\n[IP流水线 2/4] Business Insight Translator 转化商业视角...")
-        outlines = self.translator.run(facts)
-        print(f"  - 生成 {len(outlines)} 个结构化选题大纲")
+        # 1. Scout: Inspirations -> Facts
+        # We pass the dataframe, but the scout needs to know which IDs to link
+        # To keep it simple, we'll map the dataframe rows to DB IDs
+        facts_data = self.scout.run(inspiration_pool)
+        
+        # Save Facts to DB and get their IDs
+        db_facts = []
+        for f in facts_data:
+            # Find inspiration IDs that contributed to this fact
+            # In the current scout implementation, source_titles are used. 
+            # We'll look up IDs by title in the DB.
+            source_ids = []
+            for title in f.source_titles:
+                res = self.db.fetch_all("SELECT id FROM inspirations WHERE title = ?", (title,))
+                if res:
+                    source_ids.append(res[0]['id'])
+            
+            fact_id = self.db.add_topic_fact({
+                'fact': f.fact,
+                'discussion_score': f.discussion_score,
+                'reason': f.reason,
+                'run_id': run_id
+            }, source_ids)
+            
+            # Update the object with the real DB ID
+            f.topic_id = str(fact_id)
+            db_facts.append(f)
 
-        print("\n[IP流水线 3/4] Scenario Engineer 生成多平台初稿...")
-        drafts = self.engineer.run(outlines)
-        print(f"  - 生成 {len(drafts)} 篇/条平台初稿")
+        # 2. Translate: Facts -> Outlines
+        outlines_data = self.translator.run(db_facts)
+        db_outlines = []
+        for o in outlines_data:
+            # Convert topic_id back to int for FK
+            fact_id = int(o.topic_id)
+            outline_id = self.db.add_topic_outline({
+                'fact_id': fact_id,
+                'title_hook': o.title_hook,
+                'anxiety_background': o.anxiety_background,
+                'technical_breakdown': o.technical_breakdown,
+                'practical_solution': o.practical_solution,
+                'private_domain_hook': o.private_domain_hook,
+                'content_angle': o.content_angle
+            })
+            o.topic_id = str(outline_id)
+            db_outlines.append(o)
 
-        print("\n[IP流水线 4/4] Consistency Gatekeeper 质检...")
-        reviews = self.gatekeeper.run(drafts)
-        approved_keys = {(review.topic_id, review.platform) for review in reviews if review.passed}
-        approved = [draft for draft in drafts if (draft.topic_id, draft.platform) in approved_keys]
-        print(f"  - 通过 {len(approved)} 条，需修改 {len(drafts) - len(approved)} 条")
+        # 3. Engineer: Outlines -> Drafts
+        drafts_data = self.engineer.run(db_outlines)
+        db_drafts = []
+        for d in drafts_data:
+            outline_id = int(d.topic_id)
+            draft_id = self.db.add_platform_draft({
+                'outline_id': outline_id,
+                'platform': d.platform,
+                'title': d.title,
+                'body': d.body,
+                'word_count': d.word_count,
+                'score': 0.0, # Initial
+                'passed': False,
+                'issues': ""
+            })
+            # We'll use draft_id as the reference for review
+            d.topic_id = str(draft_id) 
+            db_drafts.append(d)
 
-        output_files = save_pipeline_outputs(facts, outlines, drafts, reviews, approved)
-        return PipelineRunResult(facts, outlines, drafts, reviews, approved, output_files)
+        # 4. Gatekeeper: Drafts -> Reviews
+        reviews_data = self.gatekeeper.run(db_drafts)
+        approved_drafts = []
+        
+        for r, d in zip(reviews_data, db_drafts):
+            draft_id = int(d.topic_id)
+            # Update draft with review results
+            self.db.execute_query(
+                "UPDATE platform_drafts SET score = ?, passed = ?, issues = ? WHERE id = ?",
+                (r.score, r.passed, json.dumps(r.issues, ensure_ascii=False), draft_id)
+            )
+            if r.passed:
+                approved_drafts.append(d)
 
-
-def _records(items: list[Any]) -> list[dict[str, Any]]:
-    return [asdict(item) for item in items]
-
-
-def save_pipeline_outputs(
-    facts: list[TopicFact],
-    outlines: list[TopicOutline],
-    drafts: list[PlatformDraft],
-    reviews: list[ReviewResult],
-    approved: list[PlatformDraft],
-) -> dict[str, str]:
-    os.makedirs(config.IP_CONTENT_OUTPUT_DIR, exist_ok=True)
-    os.makedirs(config.IP_APPROVED_OUTPUT_DIR, exist_ok=True)
-    run_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    output_files = {
-        "facts": os.path.join(config.IP_CONTENT_OUTPUT_DIR, f"{run_date}_facts.csv"),
-        "outlines": os.path.join(config.IP_CONTENT_OUTPUT_DIR, f"{run_date}_outlines.csv"),
-        "drafts": os.path.join(config.IP_CONTENT_OUTPUT_DIR, f"{run_date}_drafts.csv"),
-        "reviews": os.path.join(config.IP_CONTENT_OUTPUT_DIR, f"{run_date}_reviews.csv"),
-    }
-
-    file_saver.save_dataframe(pd.DataFrame(_records(facts)), output_files["facts"])
-    file_saver.save_dataframe(pd.DataFrame(_records(outlines)), output_files["outlines"])
-    file_saver.save_dataframe(pd.DataFrame(_records(drafts)), output_files["drafts"])
-    file_saver.save_dataframe(pd.DataFrame(_records(reviews)), output_files["reviews"])
-
-    for draft in approved:
-        filename = f"{run_date}_{draft.topic_id}_{draft.platform}_{_slugify(draft.title)}.md"
-        path = os.path.join(config.IP_APPROVED_OUTPUT_DIR, filename)
-        content = f"# {draft.title}\n\n平台: {draft.platform}\n状态: approved\n\n{draft.body}\n"
-        file_saver.save_text(content, path)
-        output_files[f"approved_{draft.topic_id}_{draft.platform}"] = path
-
-    return output_files
+        return PipelineRunResult(
+            facts=db_facts,
+            outlines=db_outlines,
+            drafts=db_drafts,
+            reviews=reviews_data,
+            approved=approved_drafts,
+            output_files={} # No longer using files as primary storage
+        )
